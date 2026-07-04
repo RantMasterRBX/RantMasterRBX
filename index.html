@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Archivarium OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;500;700&family=Ubuntu+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --aubergine:#2c001e;
+    --aubergine-dark:#1c0013;
+    --aubergine-light:#4d1039;
+    --orange:#e95420;
+    --orange-dark:#c34113;
+    --purple:#772953;
+    --warm-white:#f6f6f5;
+    --paper:#fdfdfc;
+    --ink:#2c2c2c;
+    --ink-soft:#5c5c5c;
+    --line:#dedede;
+    --success:#0e8420;
+    --topbar-h:28px;
+    --dock-w:64px;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0; padding:0; height:100%; width:100%; overflow:hidden;
+    font-family:'Ubuntu', sans-serif;
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+  }
+  body{ user-select:none; }
+
+  /* ---------- DESKTOP / WALLPAPER ---------- */
+  /* #wallpaper holds the actual photo, full-bleed, behind everything.
+     Change the image any time by editing WALLPAPER_URL in the <script>
+     below, or click the picture icon in the top bar to preview a local file. */
+  #wallpaper{
+    position:fixed; inset:0; z-index:0;
+    background-size:cover;
+    background-position:center;
+    background-repeat:no-repeat;
+    background-color:var(--aubergine-dark); /* shows while image loads / if none set */
+  }
+  #desktop{
+    position:fixed; inset:0; z-index:1;
+    background:
+      radial-gradient(circle at 85% 15%, rgba(233,84,32,0.20), transparent 42%),
+      repeating-linear-gradient(180deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 3px),
+      linear-gradient(160deg, rgba(44,0,30,0.72) 0%, rgba(28,0,19,0.80) 55%, rgba(15,0,10,0.88) 100%);
+    padding-top:var(--topbar-h);
+  }
+
+  /* faint scanline / static overlay = "preserved signal" motif */
+  #desktop::after{
+    content:"";
+    position:absolute; inset:0;
+    background-image:repeating-linear-gradient(0deg, rgba(0,0,0,0.10) 0px, rgba(0,0,0,0.10) 1px, transparent 1px, transparent 4px);
+    mix-blend-mode:overlay;
+    pointer-events:none;
+    opacity:.35;
+  }
+
+  /* ---------- TOP BAR ---------- */
+  #topbar{
+    position:fixed; top:0; left:0; right:0; height:var(--topbar-h);
+    background:rgba(20,3,14,0.92);
+    backdrop-filter:blur(6px);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 12px;
+    font-size:12.5px; color:#f1e9ee;
+    z-index:5000;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+  }
+  #topbar .tb-left{display:flex; align-items:center; gap:16px;}
+  #topbar .brand{font-weight:700; letter-spacing:.4px; display:flex; align-items:center; gap:6px;}
+  #topbar .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--orange); box-shadow:0 0 6px var(--orange);}
+  #topbar .tb-center{position:absolute; left:50%; transform:translateX(-50%); font-variant-numeric:tabular-nums;}
+  #topbar .tb-right{display:flex; align-items:center; gap:10px; opacity:.9;}
+  #topbar .status-icon{opacity:.85;}
+
+  /* ---------- DOCK ---------- */
+  #dock{
+    position:fixed; top:calc(var(--topbar-h) + 10px); bottom:10px; left:6px; width:var(--dock-w);
+    background:rgba(20,3,14,0.55);
+    backdrop-filter:blur(10px);
+    border-radius:16px;
+    display:flex; flex-direction:column; align-items:center;
+    padding:10px 0; gap:6px;
+    z-index:4000;
+    border:1px solid rgba(255,255,255,0.07);
+  }
+  .dock-icon{
+    width:46px; height:46px; border-radius:12px;
+    display:flex; align-items:center; justify-content:center;
+    font-size:20px; cursor:pointer; position:relative;
+    background:rgba(255,255,255,0.04);
+    transition:background .15s ease, transform .1s ease;
+  }
+  .dock-icon:hover{ background:rgba(255,255,255,0.12); transform:translateY(-2px); }
+  .dock-icon.running::after{
+    content:""; position:absolute; left:-9px; top:50%; transform:translateY(-50%);
+    width:4px; height:16px; border-radius:3px; background:var(--orange);
+  }
+  .dock-sep{ width:32px; height:1px; background:rgba(255,255,255,0.12); margin:4px 0; }
+  .dock-icon .tip{
+    position:absolute; left:56px; top:50%; transform:translateY(-50%);
+    background:#111; color:#fff; padding:4px 9px; border-radius:6px;
+    font-size:12px; white-space:nowrap; opacity:0; pointer-events:none;
+    transition:opacity .12s ease;
+  }
+  .dock-icon:hover .tip{ opacity:1; }
+
+  /* icon glyphs */
+  .ic-home{background:linear-gradient(145deg,#e95420,#c34113); color:#fff;}
+  .ic-about{background:linear-gradient(145deg,#772953,#4d1039); color:#fff;}
+  .ic-archive{background:linear-gradient(145deg,#5c3a21,#3a2414); color:#f3d9b1;}
+  .ic-credits{background:linear-gradient(145deg,#2e6f6e,#1b4443); color:#d7f3f0;}
+
+  /* ---------- APP GRID (Show Applications overlay) ---------- */
+  #app-grid{
+    position:fixed; inset:0; z-index:6000;
+    background:rgba(10,0,7,0.72);
+    backdrop-filter:blur(14px);
+    display:none;
+    align-items:center; justify-content:center;
+  }
+  #app-grid.open{ display:flex; }
+  .app-grid-panel{
+    display:grid; grid-template-columns:repeat(4, 96px); gap:22px;
+    padding:20px;
+  }
+  .app-card{
+    display:flex; flex-direction:column; align-items:center; gap:8px;
+    cursor:pointer; padding:12px 8px; border-radius:12px;
+  }
+  .app-card:hover{ background:rgba(255,255,255,0.08); }
+  .app-card .glyph{
+    width:56px; height:56px; border-radius:14px; display:flex; align-items:center; justify-content:center; font-size:26px;
+  }
+  .app-card span{ color:#f4eef1; font-size:12.5px; text-align:center; }
+
+  /* ---------- WINDOWS ---------- */
+  .window{
+    position:absolute;
+    width:640px; max-width:92vw; height:460px; max-height:82vh;
+    background:var(--paper);
+    border-radius:10px;
+    box-shadow:0 24px 60px rgba(0,0,0,0.45), 0 2px 0 rgba(255,255,255,0.04) inset;
+    display:flex; flex-direction:column;
+    overflow:hidden;
+    border:1px solid rgba(0,0,0,0.25);
+  }
+  .window.hidden{ display:none; }
+  .titlebar{
+    height:38px; background:linear-gradient(180deg,#3a3a3a,#2b2b2b);
+    display:flex; align-items:center; padding:0 10px; gap:10px;
+    cursor:grab; flex-shrink:0;
+  }
+  .titlebar:active{ cursor:grabbing; }
+  .traffic{ display:flex; gap:8px; }
+  .traffic span{ width:12px; height:12px; border-radius:50%; display:inline-block; cursor:pointer; }
+  .t-close{ background:#ec6a5e; }
+  .t-min{ background:#f4bf50; }
+  .t-max{ background:#5fc551; }
+  .traffic span:hover{ filter:brightness(1.15); }
+  .win-title{ color:#eee; font-size:13px; flex:1; text-align:center; margin-right:52px; letter-spacing:.2px; }
+  .win-body{ flex:1; overflow:auto; background:var(--warm-white); }
+  .win-body::-webkit-scrollbar{ width:10px; }
+  .win-body::-webkit-scrollbar-thumb{ background:#cfc9cd; border-radius:6px; }
+
+  /* generic content styling inside windows */
+  .pad{ padding:26px 30px; }
+  .kicker{ font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--purple); font-weight:700; margin:0 0 6px; }
+  h1.page-title{ margin:0 0 4px; font-size:26px; font-weight:700; color:var(--ink); }
+  p.lede{ color:var(--ink-soft); font-size:14.5px; line-height:1.55; max-width:52ch; margin:0 0 18px; }
+
+  /* HOME window */
+  .home-hero{
+    background:linear-gradient(135deg, var(--aubergine) 0%, var(--purple) 100%);
+    color:#fff; padding:24px 28px; position:relative; overflow:hidden;
+  }
+  .home-hero::before{
+    content:""; position:absolute; right:-40px; top:-40px; width:180px; height:180px; border-radius:50%;
+    background:rgba(233,84,32,0.35); filter:blur(10px);
+  }
+  .home-hero h1{ margin:0 0 6px; font-size:24px; }
+  .home-hero p{ margin:0; opacity:.85; font-size:13.5px; max-width:46ch; }
+  .search-row{
+    margin-top:16px; display:flex; gap:8px;
+  }
+  .search-row input{
+    flex:1; border:none; border-radius:6px; padding:10px 12px; font-size:13.5px; font-family:inherit;
+    background:rgba(255,255,255,0.14); color:#fff;
+  }
+  .search-row input::placeholder{ color:rgba(255,255,255,0.65); }
+  .search-row button{
+    background:var(--orange); border:none; color:#fff; padding:0 16px; border-radius:6px; font-family:inherit;
+    font-weight:500; cursor:pointer; font-size:13.5px;
+  }
+  .search-row button:hover{ background:var(--orange-dark); }
+  .stat-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; padding:22px 28px; }
+  .stat-card{ background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px 16px; }
+  .stat-card .num{ font-size:22px; font-weight:700; color:var(--orange-dark); }
+  .stat-card .lbl{ font-size:11.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.6px; margin-top:2px; }
+  .quicklinks{ padding:0 28px 24px; display:flex; gap:10px; flex-wrap:wrap; }
+  .qlink{
+    border:1px solid var(--line); background:#fff; border-radius:8px; padding:10px 14px;
+    font-size:13px; cursor:pointer; display:flex; align-items:center; gap:8px;
+  }
+  .qlink:hover{ border-color:var(--orange); color:var(--orange-dark); }
+
+  /* ABOUT window - terminal styled */
+  .terminal{
+    background:#1c1c1c; color:#dfe6df; font-family:'Ubuntu Mono', monospace; font-size:13px;
+    padding:20px 22px; height:100%; line-height:1.7;
+  }
+  .terminal .prompt{ color:#5fc551; }
+  .terminal .path{ color:#5aa3e0; }
+  .terminal .comment{ color:#7c7c7c; }
+  .about-prose{ padding:22px 28px; }
+  .about-prose h1{ margin-top:0; }
+  .about-prose ul{ padding-left:18px; color:var(--ink-soft); font-size:14px; line-height:1.7; }
+
+  /* ARCHIVE window - nautilus-style grid */
+  .archive-toolbar{
+    display:flex; align-items:center; gap:8px; padding:10px 14px; border-bottom:1px solid var(--line); background:#fff;
+  }
+  .archive-toolbar input{
+    flex:1; border:1px solid var(--line); border-radius:6px; padding:7px 10px; font-family:inherit; font-size:13px;
+  }
+  .archive-grid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(112px,1fr)); gap:6px; padding:16px;
+  }
+  .archive-item{
+    display:flex; flex-direction:column; align-items:center; gap:6px; padding:10px 6px; border-radius:8px; cursor:pointer;
+    text-align:center;
+  }
+  .archive-item:hover{ background:#eae7e5; }
+  .archive-item .file-glyph{
+    width:52px; height:52px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:22px;
+    background:linear-gradient(145deg,#fff,#eee); border:1px solid var(--line);
+  }
+  .archive-item .fname{ font-size:11.5px; color:var(--ink); }
+  .archive-item .fmeta{ font-size:10px; color:var(--ink-soft); }
+
+  /* CREDITS window - apt list style */
+  .pkg-list{ font-family:'Ubuntu Mono', monospace; font-size:12.5px; padding:18px 20px; }
+  .pkg-row{
+    display:grid; grid-template-columns:1fr auto auto; gap:16px; padding:8px 6px; border-bottom:1px dashed var(--line);
+  }
+  .pkg-row.head{ color:var(--ink-soft); border-bottom:1px solid var(--ink); font-weight:700; }
+  .pkg-name{ color:var(--purple); }
+  .pkg-tag{ background:var(--success); color:#fff; font-size:10px; padding:1px 6px; border-radius:4px; align-self:start; }
+
+  /* ---------- TASKBAR (bottom, shows running windows) ---------- */
+  #taskbar{
+    position:fixed; left:calc(var(--dock-w) + 16px); right:10px; bottom:10px; height:0; z-index:3500;
+    display:flex; gap:8px; pointer-events:none;
+  }
+  .task-chip{
+    pointer-events:auto;
+    background:rgba(20,3,14,0.75); color:#f2eef0; font-size:12px; padding:7px 12px; border-radius:8px;
+    display:flex; align-items:center; gap:6px; cursor:pointer; backdrop-filter:blur(6px);
+    border:1px solid rgba(255,255,255,0.08); transform:translateY(-100%); margin-top:-8px;
+  }
+  .task-chip .dot{ width:6px; height:6px; border-radius:50%; background:var(--orange); }
+  .task-chip:hover{ background:rgba(233,84,32,0.35); }
+
+  /* boot hint */
+  #hint{
+    position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
+    color:rgba(255,255,255,0.55); font-size:12px; letter-spacing:.3px;
+  }
+
+  @media (max-width:720px){
+    :root{ --dock-w:52px; }
+    .window{ width:94vw; height:80vh; top:8vh !important; left:3vw !important; }
+    .stat-grid{ grid-template-columns:1fr 1fr; }
+    .app-grid-panel{ grid-template-columns:repeat(2, 96px); }
+  }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div class="tb-left">
+    <div class="brand"><span class="dot"></span> Archivarium</div>
+  </div>
+  <div class="tb-center" id="clock">--:--</div>
+  <div class="tb-right">
+    <span class="status-icon" id="wallpaper-btn" title="Change background image" style="cursor:pointer;">🖼</span>
+    <span class="status-icon" id="apps-btn" title="Show Applications" style="cursor:pointer;">▤</span>
+    <span class="status-icon">◉ 100%</span>
+  </div>
+</div>
+<input type="file" id="wallpaper-input" accept="image/*" style="display:none;">
+
+<div id="wallpaper"></div>
+<div id="desktop">
+
+  <div id="dock">
+    <div class="dock-icon ic-home" data-win="home" onclick="openWin('home')">🏠<span class="tip">Home</span></div>
+    <div class="dock-icon ic-about" data-win="about" onclick="openWin('about')">ℹ<span class="tip">About</span></div>
+    <div class="dock-icon ic-archive" data-win="archive" onclick="openWin('archive')">🗄<span class="tip">Archive</span></div>
+    <div class="dock-icon ic-credits" data-win="credits" onclick="openWin('credits')">✎<span class="tip">Credits</span></div>
+    <div class="dock-sep"></div>
+    <div class="dock-icon" onclick="toggleAppGrid()" style="background:rgba(255,255,255,0.08); color:#f4eef1;">⊞<span class="tip">Show Applications</span></div>
+  </div>
+
+  <!-- HOME WINDOW -->
+  <div class="window" id="win-home" style="top:70px; left:100px; z-index:10;">
+    <div class="titlebar" onmousedown="startDrag(event,'home')">
+      <div class="traffic">
+        <span class="t-close" onclick="closeWin('home')"></span>
+        <span class="t-min" onclick="minWin('home')"></span>
+        <span class="t-max" onclick="maxWin('home')"></span>
+      </div>
+      <div class="win-title">home — Archivarium Files</div>
+    </div>
+    <div class="win-body">
+      <div class="home-hero">
+        <h1>Welcome to Archivarium</h1>
+        <p>A living archive of pages, files, and moments the web almost forgot. Browse what's been preserved so far.</p>
+        <div class="search-row">
+          <input type="text" placeholder="Search the archive… e.g. 'geocities 1998'">
+          <button>Search</button>
+        </div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="num">4,812</div><div class="lbl">Pages saved</div></div>
+        <div class="stat-card"><div class="num">96</div><div class="lbl">Domains crawled</div></div>
+        <div class="stat-card"><div class="num">2009–present</div><div class="lbl">Coverage span</div></div>
+      </div>
+      <div class="quicklinks">
+        <div class="qlink" onclick="openWin('archive')">🗄 Open the Archive</div>
+        <div class="qlink" onclick="openWin('about')">ℹ What is this project?</div>
+        <div class="qlink" onclick="openWin('credits')">✎ See Credits</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ABOUT WINDOW -->
+  <div class="window hidden" id="win-about" style="top:100px; left:160px; z-index:10;">
+    <div class="titlebar" onmousedown="startDrag(event,'about')">
+      <div class="traffic">
+        <span class="t-close" onclick="closeWin('about')"></span>
+        <span class="t-min" onclick="minWin('about')"></span>
+        <span class="t-max" onclick="maxWin('about')"></span>
+      </div>
+      <div class="win-title">about.txt — gedit</div>
+    </div>
+    <div class="win-body" style="display:flex;">
+      <div style="flex:1; display:flex; flex-direction:column;">
+        <div class="about-prose">
+          <p class="kicker">About the project</p>
+          <h1 class="page-title">Why Archivarium exists</h1>
+          <p class="lede">Web pages disappear quietly. Links rot, servers get switched off, and whole communities of design and writing vanish without a trace. Archivarium is a small effort to keep copies of pages worth remembering, before they're gone for good.</p>
+          <ul>
+            <li>Snapshots are captured on a rolling schedule and stored as static copies.</li>
+            <li>Anyone can suggest a page or site for preservation.</li>
+            <li>Everything here is browsable offline — no dead links, no ads, no trackers.</li>
+          </ul>
+        </div>
+        <div class="terminal" style="flex:1;">
+<span class="comment"># mission.sh</span>
+<span class="prompt">visitor@archivarium:~$</span> cat mission.txt
+"Preserve first, curate second, judge never."
+<span class="prompt">visitor@archivarium:~$</span> whoami
+a small, ongoing, volunteer-run archive
+<span class="prompt">visitor@archivarium:~$</span> <span class="path">_</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ARCHIVE WINDOW -->
+  <div class="window hidden" id="win-archive" style="top:60px; left:220px; width:700px; z-index:10;">
+    <div class="titlebar" onmousedown="startDrag(event,'archive')">
+      <div class="traffic">
+        <span class="t-close" onclick="closeWin('archive')"></span>
+        <span class="t-min" onclick="minWin('archive')"></span>
+        <span class="t-max" onclick="maxWin('archive')"></span>
+      </div>
+      <div class="win-title">Archive — Files</div>
+    </div>
+    <div class="win-body">
+      <div class="archive-toolbar">
+        <input type="text" placeholder="Filter archived pages…">
+      </div>
+      <div class="archive-grid" id="archive-grid"><!-- filled by JS --></div>
+    </div>
+  </div>
+
+  <!-- CREDITS WINDOW -->
+  <div class="window hidden" id="win-credits" style="top:130px; left:280px; z-index:10;">
+    <div class="titlebar" onmousedown="startDrag(event,'credits')">
+      <div class="traffic">
+        <span class="t-close" onclick="closeWin('credits')"></span>
+        <span class="t-min" onclick="minWin('credits')"></span>
+        <span class="t-max" onclick="maxWin('credits')"></span>
+      </div>
+      <div class="win-title">credits — apt list --installed</div>
+    </div>
+    <div class="win-body">
+      <div class="pkg-list">
+        <div class="pkg-row head"><div>package/role</div><div>version</div><div>status</div></div>
+        <div class="pkg-row"><div><span class="pkg-name">j.rivera</span> — lead archivist</div><div>since 2021</div><div><span class="pkg-tag">active</span></div></div>
+        <div class="pkg-row"><div><span class="pkg-name">m.okafor</span> — crawler engineer</div><div>since 2022</div><div><span class="pkg-tag">active</span></div></div>
+        <div class="pkg-row"><div><span class="pkg-name">s.lindqvist</span> — design & UI</div><div>since 2023</div><div><span class="pkg-tag">active</span></div></div>
+        <div class="pkg-row"><div><span class="pkg-name">open-source contributors</span></div><div>various</div><div><span class="pkg-tag">active</span></div></div>
+        <div class="pkg-row"><div><span class="pkg-name">Wayback-adjacent tooling</span> — inspiration</div><div>—</div><div><span class="pkg-tag">thanks</span></div></div>
+        <div class="pkg-row"><div><span class="pkg-name">you</span> — for visiting</div><div>today</div><div><span class="pkg-tag">active</span></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="hint">Use the dock on the left, or open Show Applications</div>
+</div>
+
+<div id="app-grid">
+  <div class="app-grid-panel">
+    <div class="app-card" onclick="openFromGrid('home')"><div class="glyph ic-home">🏠</div><span>Home</span></div>
+    <div class="app-card" onclick="openFromGrid('about')"><div class="glyph ic-about">ℹ</div><span>About</span></div>
+    <div class="app-card" onclick="openFromGrid('archive')"><div class="glyph ic-archive">🗄</div><span>Archive</span></div>
+    <div class="app-card" onclick="openFromGrid('credits')"><div class="glyph ic-credits">✎</div><span>Credits</span></div>
+  </div>
+</div>
+
+<div id="taskbar"></div>
+
+<script>
+  /* ---------- BACKGROUND IMAGE ---------- */
+  /* Change this to swap the wallpaper permanently. Any image URL or local
+     path works (e.g. "wallpaper.jpg" if you keep the file next to this one). */
+  const WALLPAPER_URL = "https://images.unsplash.com/photo-1516116216624-53e697fedbea?auto=format&fit=crop&w=1920&q=80";
+
+  function setWallpaper(url){
+    document.getElementById('wallpaper').style.backgroundImage = url ? `url("${url}")` : 'none';
+  }
+  setWallpaper(WALLPAPER_URL);
+
+  // Click the picture icon in the top bar to preview any local image instantly.
+  const wallpaperBtn = document.getElementById('wallpaper-btn');
+  const wallpaperInput = document.getElementById('wallpaper-input');
+  wallpaperBtn.addEventListener('click', ()=> wallpaperInput.click());
+  wallpaperInput.addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const url = URL.createObjectURL(file);
+    setWallpaper(url);
+  });
+
+  /* ---------- SHOW APPLICATIONS grid ---------- */
+  const appGrid = document.getElementById('app-grid');
+  function toggleAppGrid(){ appGrid.classList.toggle('open'); }
+  function openFromGrid(name){
+    appGrid.classList.remove('open');
+    openWin(name);
+  }
+  document.getElementById('apps-btn').addEventListener('click', toggleAppGrid);
+  // click the dimmed backdrop (not a card) to close
+  appGrid.addEventListener('click', (e)=>{ if(e.target === appGrid) appGrid.classList.remove('open'); });
+  document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') appGrid.classList.remove('open'); });
+
+  /* ---------- clock ---------- */
+  function tick(){
+    const d = new Date();
+    const h = String(d.getHours()).padStart(2,'0');
+    const m = String(d.getMinutes()).padStart(2,'0');
+    const days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const months=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    document.getElementById('clock').textContent =
+      `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()}  ${h}:${m}`;
+  }
+  tick(); setInterval(tick, 1000*10);
+
+  /* ---------- archive data ---------- */
+  const archiveFiles = [
+    {name:'geocities-fanpages', date:'1998–2001', glyph:'🖼'},
+    {name:'zine-scans-vol1', date:'2004', glyph:'📄'},
+    {name:'old-forum-dump', date:'2006', glyph:'💬'},
+    {name:'flash-portfolio-site', date:'2007', glyph:'🎞'},
+    {name:'university-cs-course', date:'2010', glyph:'📚'},
+    {name:'indie-blog-archive', date:'2012–2015', glyph:'✍'},
+    {name:'defunct-webring', date:'2013', glyph:'🔗'},
+    {name:'local-news-site', date:'2016', glyph:'📰'},
+    {name:'personal-homepage-01', date:'2018', glyph:'🏠'},
+    {name:'discontinued-wiki', date:'2020', glyph:'📖'},
+    {name:'shuttered-startup', date:'2021', glyph:'🗃'},
+    {name:'community-recipe-hub', date:'2022', glyph:'🍲'},
+  ];
+  const grid = document.getElementById('archive-grid');
+  archiveFiles.forEach(f=>{
+    const el = document.createElement('div');
+    el.className='archive-item';
+    el.innerHTML = `<div class="file-glyph">${f.glyph}</div><div class="fname">${f.name}</div><div class="fmeta">${f.date}</div>`;
+    grid.appendChild(el);
+  });
+
+  /* ---------- window manager ---------- */
+  const titles = {home:'Home', about:'About', archive:'Archive', credits:'Credits'};
+  let zTop = 20;
+  const openWindows = new Set();
+
+  function raiseWin(name){
+    const w = document.getElementById('win-'+name);
+    zTop += 1;
+    w.style.zIndex = zTop;
+  }
+
+  function refreshTaskbar(){
+    const bar = document.getElementById('taskbar');
+    bar.innerHTML = '';
+    openWindows.forEach(name=>{
+      const chip = document.createElement('div');
+      chip.className='task-chip';
+      chip.innerHTML = `<span class="dot"></span>${titles[name]}`;
+      chip.onclick = ()=>{ 
+        const w = document.getElementById('win-'+name);
+        w.classList.remove('hidden');
+        raiseWin(name);
+      };
+      bar.appendChild(chip);
+    });
+    document.querySelectorAll('.dock-icon').forEach(ic=>{
+      ic.classList.toggle('running', openWindows.has(ic.dataset.win));
+    });
+  }
+
+  function openWin(name){
+    const w = document.getElementById('win-'+name);
+    w.classList.remove('hidden');
+    openWindows.add(name);
+    raiseWin(name);
+    refreshTaskbar();
+  }
+  function closeWin(name){
+    const w = document.getElementById('win-'+name);
+    w.classList.add('hidden');
+    openWindows.delete(name);
+    refreshTaskbar();
+  }
+  function minWin(name){
+    closeWin(name); // simple model: minimize = hide, restore via taskbar/dock
+  }
+  function maxWin(name){
+    const w = document.getElementById('win-'+name);
+    if(w.dataset.maxed === '1'){
+      w.style.top = w.dataset.prevTop;
+      w.style.left = w.dataset.prevLeft;
+      w.style.width = w.dataset.prevW;
+      w.style.height = w.dataset.prevH;
+      w.dataset.maxed = '0';
+    } else {
+      w.dataset.prevTop = w.style.top;
+      w.dataset.prevLeft = w.style.left;
+      w.dataset.prevW = w.style.width;
+      w.dataset.prevH = w.style.height;
+      w.style.top = '38px';
+      w.style.left = '8px';
+      w.style.width = 'calc(100vw - 90px)';
+      w.style.height = 'calc(100vh - 60px)';
+      w.dataset.maxed = '1';
+    }
+    raiseWin(name);
+  }
+
+  /* ---------- dragging ---------- */
+  let dragCtx = null;
+  function startDrag(e, name){
+    raiseWin(name);
+    const w = document.getElementById('win-'+name);
+    if (w.dataset.maxed === '1') return; // don't drag while maximized
+    const rect = w.getBoundingClientRect();
+    dragCtx = { name, offX: e.clientX - rect.left, offY: e.clientY - rect.top };
+    document.addEventListener('mousemove', onDrag);
+    document.addEventListener('mouseup', stopDrag);
+  }
+  function onDrag(e){
+    if(!dragCtx) return;
+    const w = document.getElementById('win-'+dragCtx.name);
+    let x = e.clientX - dragCtx.offX;
+    let y = e.clientY - dragCtx.offY;
+    x = Math.max(4, Math.min(x, window.innerWidth - 80));
+    y = Math.max(28, Math.min(y, window.innerHeight - 40));
+    w.style.left = x+'px';
+    w.style.top = y+'px';
+  }
+  function stopDrag(){
+    dragCtx = null;
+    document.removeEventListener('mousemove', onDrag);
+    document.removeEventListener('mouseup', stopDrag);
+  }
+
+  /* focus any window on mousedown anywhere inside it */
+  document.querySelectorAll('.window').forEach(w=>{
+    w.addEventListener('mousedown', ()=>{
+      const name = w.id.replace('win-','');
+      raiseWin(name);
+    });
+  });
+
+  /* open Home by default */
+  openWin('home');
+</script>
+
+</body>
+</html>
